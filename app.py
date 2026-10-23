@@ -11,7 +11,8 @@ from google.genai import types
 
 # ----------------------------- Configuration ------------------------------ #
 
-DEFAULT_MODEL = "gemini-2.5-flash"  # change in the sidebar or here if Google renames it
+DEFAULT_MODEL = "gemini-3.8-flash"  # current stable Flash model; editable in the sidebar
+FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]  # tried if the main model is not found
 MAX_CODE_CHARS = 30_000
 LANGUAGES = [
     "Auto-detect", "Python", "JavaScript", "TypeScript", "Java", "C", "C++",
@@ -90,20 +91,38 @@ def get_api_key(sidebar_value):
     return os.environ.get("GEMINI_API_KEY", "").strip()
 
 
+def is_not_found(exc):
+    low = str(exc).lower()
+    return "404" in low or "not found" in low or "no longer available" in low
+
+
 def stream_review(api_key, model, prompt):
-    """Yield text chunks from Gemini as they arrive."""
+    """Yield text chunks from Gemini as they arrive.
+
+    If the chosen model does not exist (renamed/retired), fall back to the
+    next model in FALLBACK_MODELS, but only before any text has been shown.
+    """
     client = genai.Client(api_key=api_key)
-    stream = client.models.generate_content_stream(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.2,
-        ),
-    )
-    for chunk in stream:
-        if chunk.text:
-            yield chunk.text
+    candidates = [model] + [m for m in FALLBACK_MODELS if m != model]
+    last_exc = None
+    for name in candidates:
+        started = False
+        try:
+            stream = client.models.generate_content_stream(
+                model=name,
+                contents=prompt,
+                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+            )
+            for chunk in stream:
+                if chunk.text:
+                    started = True
+                    yield chunk.text
+            return
+        except Exception as exc:
+            if started or not is_not_found(exc):
+                raise
+            last_exc = exc
+    raise last_exc
 
 
 def friendly_error(exc):
@@ -115,7 +134,7 @@ def friendly_error(exc):
     if "429" in low or "quota" in low or "rate" in low:
         return "Rate limit or quota reached. Wait a moment and try again."
     if "404" in low or "not found" in low:
-        return "Model not found. Check the model name in the sidebar."
+        return "Model not found. Check the model name in the sidebar (see ai.google.dev/gemini-api/docs/models)."
     return f"Something went wrong: {msg}"
 
 
