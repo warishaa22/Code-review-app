@@ -11,7 +11,7 @@ from google.genai import types
 
 # ----------------------------- Configuration ------------------------------ #
 
-DEFAULT_MODEL = "gemini-3.8-flash"  # current stable Flash model; editable in the sidebar
+DEFAULT_MODEL = "gemini-3.5-flash"  # current stable Flash model; editable in the sidebar
 FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"]  # tried if the main model is not found
 MAX_CODE_CHARS = 30_000
 LANGUAGES = [
